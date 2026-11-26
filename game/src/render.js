@@ -525,8 +525,10 @@ export function createRenderer(canvas) {
     context.arc(dialX, dialY, dialR, 0, TWO_PI);
     context.clip();
     context.translate(dialX, dialY);
-    context.rotate(plane.roll);
-    context.translate(0, plane.pitch * 120);
+    // Banking right tips the horizon the other way, as the real instrument does.
+    context.rotate(-plane.roll);
+    // Nose up drops the horizon below the centre, so more sky shows.
+    context.translate(0, -plane.pitch * 120);
     context.fillStyle = '#3f7fc4';
     context.fillRect(-dialR, -dialR * 2, dialR * 2, dialR * 2);
     context.fillStyle = '#8a6a42';

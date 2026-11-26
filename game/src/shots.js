@@ -5,7 +5,7 @@
 // the same frame.
 
 import { PLANE, RINGS, STEP } from './config.js';
-import { EVENT_CRASHED, EVENT_LANDED, PHASE_FLYING, PHASE_GROUND } from './world.js';
+import { EVENT_CRASHED, EVENT_LANDED, PHASE_CRASHED, PHASE_FLYING, PHASE_GROUND } from './world.js';
 import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 
 function clamp(value, min, max) {
@@ -34,9 +34,23 @@ function autopilotTo(plane, target, wantSpeed) {
   return [pitchIn, rollIn, throttleIn];
 }
 
-function autopilotHome(plane) {
-  // Fly back to the strip and line up on its heading for the landing.
-  return autopilotTo(plane, { x: 0, y: 90, z: -700 }, 55);
+/**
+ * Steer home. `onFinal` is latched by the caller: once the plane has flown
+ * past the strip to the south, it stays on the long straight final back
+ * north — a hard boundary would flip-flop as each turn crosses it.
+ */
+function autopilotHome(plane, onFinal) {
+  if (!onFinal) return autopilotTo(plane, { x: 0, y: 60, z: -1400 }, 55);
+  return autopilotTo(plane, { x: 0, y: 12, z: 300 }, 48);
+}
+
+/**
+ * The flare: hold about 30% throttle and wings level, so the power-off sink
+ * settles her onto the strip at about 2 m/s. Returns [pitchIn, rollIn, throttleIn].
+ */
+function autopilotFlare(plane) {
+  const throttleIn = plane.throttle < 0.3 ? 0.4 : plane.throttle > 0.35 ? -0.4 : 0;
+  return [clamp(-plane.pitch * 2, -1, 1), clamp(-plane.roll * 2, -1, 1), throttleIn];
 }
 
 /**
@@ -59,6 +73,7 @@ export function stageShot(name, world) {
     // A full run: take off, fly all six rings, come home and land.
     plane.throttle = 1;
     let steps = 0;
+    let onFinal = false;
     const maxSteps = 420 / STEP;
     while (steps < maxSteps) {
       let input;
@@ -68,10 +83,11 @@ export function stageShot(name, world) {
         const ring = state.rings[state.ringsDone];
         input = autopilotTo(plane, ring, 58);
       } else {
-        input = autopilotHome(plane);
-        // Over the threshold, cut the throttle and flare.
-        if (Math.abs(plane.x) < 60 && plane.z > -700 && plane.z < 200 && plane.y < 60) {
-          input = [0.5, clamp(-plane.roll * 2, -1, 1), -1];
+        if (!onFinal && plane.z < -1250) onFinal = true;
+        input = autopilotHome(plane, onFinal);
+        // Low over the threshold and lined up: flare.
+        if (Math.abs(plane.x) < 50 && plane.z > -450 && plane.y < 30) {
+          input = autopilotFlare(plane);
         }
       }
       const events = world.step(STEP, input[0], input[1], input[2], 0, false);

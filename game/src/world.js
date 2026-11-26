@@ -225,10 +225,13 @@ export function createWorld(random) {
     plane.speed += clamp(targetSpeed - plane.speed, -accel * dt, accel * dt);
 
     // The bank turns the nose; the turn tightens with speed. Parked, she stays put.
+    // Banking right (positive roll) turns the nose right, toward larger headings.
     const turnFactor = plane.speed < 2 ? 0 : clamp(plane.speed / PLANE.maxSpeed, 0.25, 1);
-    plane.heading = wrapAngle(plane.heading - Math.sin(plane.roll) * PLANE.turnRate * turnFactor * dt);
+    plane.heading = wrapAngle(plane.heading + Math.sin(plane.roll) * PLANE.turnRate * turnFactor * dt);
 
     // Vertical speed: pitch and power lift the nose, gravity pulls it down.
+    // Cutting the throttle settles the plane at a gentle sink, so a level
+    // approach with the power off is a landing, not a stall.
     const flying = plane.speed > PLANE.stallSpeed;
     let vy = 0;
     if (state.phase === PHASE_FLYING || (state.phase === PHASE_GROUND && plane.speed > PLANE.rotateSpeed && plane.pitch < -0.05)) {
@@ -237,12 +240,17 @@ export function createWorld(random) {
         state.airborne = true;
         if (!harmless) say('Airborne! Fly the rings in order — gold ring next.', 5);
       }
-      const climbPower = flying ? Math.sin(-plane.pitch) * plane.speed : 0;
-      vy = clamp(climbPower, -PLANE.sink * 1.6, PLANE.climb * 1.6);
-      if (!flying) vy = -PLANE.sink;
-      if (plane.throttle < 0.15 && plane.speed < PLANE.stallSpeed * 1.4) vy = Math.min(vy, -3);
+      if (flying) {
+        vy = Math.sin(-plane.pitch) * plane.speed - (1 - plane.throttle) * 3;
+        vy = clamp(vy, -PLANE.sink * 1.6, PLANE.climb * 1.6);
+      } else {
+        vy = -PLANE.sink;
+      }
     }
     plane.vy = vy;
+    // Energy: a climb spends speed, a descent buys a little back.
+    if (vy > 0) plane.speed = Math.max(0, plane.speed - vy * 0.15 * dt);
+    else if (vy < 0) plane.speed = Math.min(PLANE.maxSpeed, plane.speed - vy * 0.08 * dt);
     plane.y += vy * dt;
 
     // Move along the heading; the nose dips a little with the climb.
@@ -310,9 +318,11 @@ export function createWorld(random) {
         }
         plane.speed *= 0.94;
       } else {
-        // Still rolling on the ground: scrub speed, keep her on the strip.
-        plane.speed *= 1 - 0.35 * dt;
-        if (plane.speed < 0.5) plane.speed = 0;
+        // Still rolling on the ground: light rolling drag, keep her on the strip.
+        // Only a coasting plane ever fully stops — a powered one must keep
+        // the speed each step adds, or she could never get rolling.
+        plane.speed *= 1 - 0.06 * dt;
+        if (plane.speed < 0.5 && plane.throttle < 0.05) plane.speed = 0;
         if (!onStrip && plane.speed > 12 && !harmless) {
           return events | crash('Ran off the runway into the grass. The courier run is over.');
         }

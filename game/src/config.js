@@ -43,7 +43,7 @@ export const PLANE = {
 };
 
 /** Fuel, in percent. Drains with throttle; empty means gliding only. */
-export const FUEL = { start: 100, drainPerSecond: 0.55 };
+export const FUEL = { start: 100, drainPerSecond: 0.35 };
 
 /** The course: six rings over the valley, then home to the runway. */
 export const RINGS = [
